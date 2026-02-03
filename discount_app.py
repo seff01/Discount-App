@@ -7,9 +7,15 @@ This is the base file for the discount app that will search for deals across var
 
 import json
 import logging
+import re
+import time
 from datetime import datetime
-from typing import List, Dict, Optional
 from enum import Enum
+from typing import Dict, List, Optional
+from urllib.parse import quote_plus
+
+import requests
+from bs4 import BeautifulSoup
 
 
 # Configure logging
@@ -18,6 +24,16 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    )
+}
+REQUEST_TIMEOUT = 10
+MAX_RESULTS_PER_RETAILER = 5
 
 
 class ProductCategory(Enum):
@@ -33,6 +49,21 @@ class ProductCategory(Enum):
     CONSOLE = "Console"
     TELEVISION = "Television"
     MONITOR = "Monitor"
+
+
+CATEGORY_SEARCH_TERMS = {
+    ProductCategory.CPU: "cpu processor",
+    ProductCategory.GPU: "graphics card",
+    ProductCategory.RAM: "ddr5 ram",
+    ProductCategory.MOTHERBOARD: "motherboard",
+    ProductCategory.SSD: "nvme ssd",
+    ProductCategory.HDD: "hard drive",
+    ProductCategory.PSU: "power supply",
+    ProductCategory.CASE: "pc case",
+    ProductCategory.CONSOLE: "game console",
+    ProductCategory.TELEVISION: "4k tv",
+    ProductCategory.MONITOR: "gaming monitor",
+}
 
 
 class Deal:
@@ -95,15 +126,13 @@ class DealSearcher:
     
     def __init__(self):
         self.deals: List[Deal] = []
-        self.retailers = [
-            "Amazon",
-            "Newegg",
-            "Best Buy",
-            "Micro Center",
-            "B&H Photo",
-            "Walmart",
-            "Target"
-        ]
+        self.retailer_scrapers = {
+            "Best Buy": self._scrape_bestbuy,
+            "Newegg": self._scrape_newegg,
+        }
+        self.retailers = list(self.retailer_scrapers.keys())
+        self.request_delay = 0.2
+        self.max_results_per_retailer = MAX_RESULTS_PER_RETAILER
     
     def search_deals(self, categories: Optional[List[ProductCategory]] = None) -> List[Deal]:
         """
@@ -139,52 +168,161 @@ class DealSearcher:
         Returns:
             List of Deal objects.
         """
-        # Placeholder for actual implementation
-        # In a real implementation, this would scrape websites or call APIs
         logger.info("Fetching deals from retailers...")
-        logger.info("Note: This is a base implementation. Add web scraping or API logic here.")
-        
-        # Example deals to demonstrate the structure
-        example_deals = [
-            Deal(
-                product_name="AMD Ryzen 9 5900X",
-                category=ProductCategory.CPU,
-                original_price=549.99,
-                sale_price=399.99,
-                retailer="Newegg",
-                url="https://www.newegg.com/example",
-                description="12-Core, 24-Thread Desktop Processor"
-            ),
-            Deal(
-                product_name="NVIDIA RTX 4070",
-                category=ProductCategory.GPU,
-                original_price=599.99,
-                sale_price=499.99,
-                retailer="Best Buy",
-                url="https://www.bestbuy.com/example",
-                description="12GB GDDR6X Graphics Card"
-            ),
-            Deal(
-                product_name="PlayStation 5",
-                category=ProductCategory.CONSOLE,
-                original_price=499.99,
-                sale_price=449.99,
-                retailer="Amazon",
-                url="https://www.amazon.com/example",
-                description="PS5 Console with Controller"
-            ),
-            Deal(
-                product_name='Samsung 55" 4K TV',
-                category=ProductCategory.TELEVISION,
-                original_price=799.99,
-                sale_price=599.99,
-                retailer="Target",
-                url="https://www.target.com/example",
-                description="55-inch 4K UHD Smart TV"
-            ),
-        ]
-        
-        return example_deals
+
+        deals: List[Deal] = []
+        seen = set()
+
+        for category in categories:
+            search_term = CATEGORY_SEARCH_TERMS.get(category, category.value)
+            logger.info("Searching '%s' for %s", search_term, category.value)
+
+            for retailer, scraper in self.retailer_scrapers.items():
+                retailer_deals = scraper(search_term, category, self.max_results_per_retailer)
+                if retailer_deals:
+                    logger.info("Found %s deals from %s", len(retailer_deals), retailer)
+
+                for deal in retailer_deals:
+                    key = (deal.retailer, deal.product_name.lower())
+                    if key in seen:
+                        continue
+                    deals.append(deal)
+                    seen.add(key)
+
+                if self.request_delay:
+                    time.sleep(self.request_delay)
+
+        if not deals:
+            logger.warning("No deals found from the live scrapers.")
+
+        return deals
+
+    @staticmethod
+    def _parse_price(text: str) -> Optional[float]:
+        if not text:
+            return None
+        match = re.search(r"([0-9]+(?:,[0-9]{3})*(?:\.\d{2})?)", text)
+        if not match:
+            return None
+        return float(match.group(1).replace(",", ""))
+
+    def _scrape_bestbuy(
+        self,
+        search_term: str,
+        category: ProductCategory,
+        limit: int,
+    ) -> List[Deal]:
+        url = f"https://www.bestbuy.com/site/searchpage.jsp?st={quote_plus(search_term)}"
+        try:
+            response = requests.get(url, headers=DEFAULT_HEADERS, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("Best Buy request failed for '%s': %s", search_term, exc)
+            return []
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        items = soup.select("li.sku-item")
+        deals: List[Deal] = []
+
+        for item in items:
+            title_tag = item.select_one("h4.sku-title a")
+            price_tag = item.select_one("div.priceView-customer-price span")
+
+            if not title_tag or not price_tag:
+                continue
+
+            sale_price = self._parse_price(price_tag.get_text(strip=True))
+            if sale_price is None:
+                continue
+
+            original_price = sale_price
+            prev_price_tag = item.select_one("div.priceView-previous-price span")
+            prev_price = self._parse_price(prev_price_tag.get_text(strip=True)) if prev_price_tag else None
+            if prev_price and prev_price > sale_price:
+                original_price = prev_price
+
+            product_name = title_tag.get_text(strip=True)
+            product_url = title_tag.get("href", "")
+            if product_url.startswith("/"):
+                product_url = f"https://www.bestbuy.com{product_url}"
+
+            description_tag = item.select_one("div.sku-description")
+            description = description_tag.get_text(" ", strip=True) if description_tag else ""
+
+            deals.append(
+                Deal(
+                    product_name=product_name,
+                    category=category,
+                    original_price=original_price,
+                    sale_price=sale_price,
+                    retailer="Best Buy",
+                    url=product_url,
+                    description=description,
+                )
+            )
+
+            if len(deals) >= limit:
+                break
+
+        return deals
+
+    def _scrape_newegg(
+        self,
+        search_term: str,
+        category: ProductCategory,
+        limit: int,
+    ) -> List[Deal]:
+        url = f"https://www.newegg.com/p/pl?d={quote_plus(search_term)}"
+        try:
+            response = requests.get(url, headers=DEFAULT_HEADERS, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("Newegg request failed for '%s': %s", search_term, exc)
+            return []
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        items = soup.select("div.item-cell")
+        deals: List[Deal] = []
+
+        for item in items:
+            title_tag = item.select_one("a.item-title")
+            price_tag = item.select_one("li.price-current")
+            if not title_tag or not price_tag:
+                continue
+
+            price_text = price_tag.get_text(" ", strip=True)
+            if "see price in cart" in price_text.lower():
+                continue
+
+            sale_price = self._parse_price(price_text)
+            if sale_price is None:
+                continue
+
+            original_price = sale_price
+            was_tag = item.select_one("li.price-was")
+            was_price = self._parse_price(was_tag.get_text(" ", strip=True)) if was_tag else None
+            if was_price and was_price > sale_price:
+                original_price = was_price
+
+            product_name = title_tag.get_text(strip=True)
+            product_url = title_tag.get("href", "")
+
+            deals.append(
+                Deal(
+                    product_name=product_name,
+                    category=category,
+                    original_price=original_price,
+                    sale_price=sale_price,
+                    retailer="Newegg",
+                    url=product_url,
+                    description="",
+                )
+            )
+
+            if len(deals) >= limit:
+                break
+
+        return deals
     
     def filter_deals_by_category(self, category: ProductCategory) -> List[Deal]:
         """Filter deals by a specific category."""
