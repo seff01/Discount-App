@@ -2,6 +2,21 @@
 
 A Python application to find the best sales and deals for computer parts (CPU, GPU, etc.), gaming consoles, and televisions.
 
+## Quick Start
+
+Want to get started right away? Here's the fastest method:
+
+1. **Download**: Click the green **"Code"** button → **"Download ZIP"** → Extract the files
+2. **Run**: Open a terminal in the extracted folder and run:
+   ```bash
+   python discount_app.py
+   ```
+3. **Done!** The app will display example deals and create a `deals.json` file
+
+_No installation required! Python is the only prerequisite._
+
+**Need detailed download instructions?** See [DOWNLOAD.md](DOWNLOAD.md) for step-by-step guides for all download methods.
+
 ## Features
 
 - **Product Categories**: Search for deals across multiple categories including:
@@ -30,21 +45,57 @@ A Python application to find the best sales and deals for computer parts (CPU, G
 
 - **Export Functionality**: Export found deals to JSON format for later analysis
 
-## Installation
+## How to Download
 
-1. Clone the repository:
+You can download this project in several ways:
+
+### Option 1: Download as ZIP (Easiest - No Git Required)
+
+1. Go to the [Discount-App repository](https://github.com/seff01/Discount-App) on GitHub
+2. Click the green **"Code"** button near the top right
+3. Click **"Download ZIP"**
+4. Extract the ZIP file to your desired location
+5. Open a terminal/command prompt and navigate to the extracted folder:
+   ```bash
+   cd path/to/Discount-App
+   ```
+
+### Option 2: Clone with Git (Recommended for Developers)
+
+If you have Git installed, clone the repository:
+
 ```bash
 git clone https://github.com/seff01/Discount-App.git
 cd Discount-App
 ```
 
-2. (Optional) Create a virtual environment:
+### Option 3: Use GitHub Desktop
+
+1. Download and install [GitHub Desktop](https://desktop.github.com/)
+2. Go to **File** → **Clone Repository**
+3. Enter the URL: `https://github.com/seff01/Discount-App`
+4. Choose where to save it on your computer
+5. Click **Clone**
+
+### Option 4: Download Individual Files
+
+If you only need specific files:
+1. Navigate to the file on [GitHub](https://github.com/seff01/Discount-App)
+2. Click on the file name (e.g., `discount_app.py`)
+3. Click the **"Raw"** button
+4. Right-click and select **"Save as..."** to download
+
+## Installation
+
+After downloading the files using any method above:
+
+1. (Optional but recommended) Create a virtual environment:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Install dependencies (when ready for web scraping):
+2. Install dependencies (currently minimal - only needed for future web scraping):
 ```bash
 pip install -r requirements.txt
 ```
@@ -99,8 +150,10 @@ searcher.export_deals_to_json("my_deals.json")
 ```
 Discount-App/
 ├── discount_app.py      # Main application file
+├── examples.py          # Usage examples and configuration templates
 ├── requirements.txt     # Python dependencies
 ├── README.md           # This file
+├── DOWNLOAD.md         # Detailed download instructions
 └── .gitignore          # Git ignore rules
 ```
 
