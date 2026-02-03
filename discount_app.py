@@ -174,7 +174,7 @@ class DealSearcher:
                 description="PS5 Console with Controller"
             ),
             Deal(
-                product_name="Samsung 55\" 4K TV",
+                product_name='Samsung 55" 4K TV',
                 category=ProductCategory.TELEVISION,
                 original_price=799.99,
                 sale_price=599.99,

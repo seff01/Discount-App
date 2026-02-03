@@ -100,9 +100,24 @@ RETAILER_NOTES = {
 }
 
 # Example search terms for different categories
+# Note: This requires importing ProductCategory from discount_app
+# from discount_app import ProductCategory
+
+SEARCH_TERMS = {
+    # ProductCategory.CPU: ["AMD Ryzen", "Intel Core", "processor", "CPU"],
+    # ProductCategory.GPU: ["RTX", "AMD Radeon", "graphics card", "GPU"],
+    # ProductCategory.CONSOLE: ["PlayStation", "Xbox", "Nintendo Switch"],
+    # ProductCategory.TELEVISION: ["4K TV", "OLED TV", "Smart TV", "television"],
+}
+
+# When using this in actual code:
+"""
+from discount_app import ProductCategory
+
 SEARCH_TERMS = {
     ProductCategory.CPU: ["AMD Ryzen", "Intel Core", "processor", "CPU"],
     ProductCategory.GPU: ["RTX", "AMD Radeon", "graphics card", "GPU"],
     ProductCategory.CONSOLE: ["PlayStation", "Xbox", "Nintendo Switch"],
     ProductCategory.TELEVISION: ["4K TV", "OLED TV", "Smart TV", "television"],
 }
+"""
