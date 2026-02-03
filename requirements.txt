@@ -1,0 +1,14 @@
+# Core requirements for the Discount App
+# These are minimal dependencies for the base implementation
+
+# For future web scraping implementation
+# beautifulsoup4>=4.12.0
+# requests>=2.31.0
+# selenium>=4.15.0
+
+# For data handling (already in standard library, listed for reference)
+# json
+# datetime
+# logging
+# typing
+# enum
