@@ -36,6 +36,7 @@ INDEX_TEMPLATE = """
       .filters { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
       label { display: block; font-size: 0.95rem; }
       input[type="number"] { padding: 0.35rem; width: 8rem; }
+      input[type="text"] { padding: 0.35rem; width: 18rem; }
       select { padding: 0.35rem; }
       button { margin-top: 1rem; padding: 0.5rem 1rem; background: #2563eb; color: white; border: none; border-radius: 6px; }
       table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; }
@@ -64,6 +65,10 @@ INDEX_TEMPLATE = """
       </fieldset>
 
       <div class="filters">
+        <label>
+          Search term
+          <input type="text" name="query" placeholder="e.g. RTX 4070" value="{{ query }}" />
+        </label>
         <label>
           Min discount %
           <input type="number" name="min_discount" min="0" step="1" value="{{ min_discount }}" />
@@ -147,6 +152,7 @@ def _parse_float(value: Optional[str]) -> Optional[float]:
 @app.route("/", methods=["GET", "POST"])
 def index():
     selected_categories = list(DEFAULT_CATEGORY_SELECTION)
+    query = ""
     min_discount = ""
     max_price = ""
     sort_by = "discount"
@@ -157,6 +163,7 @@ def index():
     if request.method == "POST":
         searched = True
         selected_categories = request.form.getlist("categories") or list(DEFAULT_CATEGORY_SELECTION)
+        query = request.form.get("query", "").strip()
         min_discount = request.form.get("min_discount", "")
         max_price = request.form.get("max_price", "")
         sort_by = request.form.get("sort_by", "discount")
@@ -164,7 +171,7 @@ def index():
         try:
             categories = [ProductCategory[name] for name in selected_categories]
             searcher = DealSearcher()
-            deals = searcher.search_deals(categories=categories)
+            deals = searcher.search_deals(categories=categories, search_term=query or None)
 
             min_discount_value = _parse_float(min_discount)
             if min_discount_value is not None:
@@ -185,6 +192,7 @@ def index():
         INDEX_TEMPLATE,
         categories=list(ProductCategory),
         selected_categories=selected_categories,
+        query=query,
         min_discount=min_discount,
         max_price=max_price,
         sort_by=sort_by,

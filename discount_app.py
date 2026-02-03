@@ -134,12 +134,17 @@ class DealSearcher:
         self.request_delay = 0.2
         self.max_results_per_retailer = MAX_RESULTS_PER_RETAILER
     
-    def search_deals(self, categories: Optional[List[ProductCategory]] = None) -> List[Deal]:
+    def search_deals(
+        self,
+        categories: Optional[List[ProductCategory]] = None,
+        search_term: Optional[str] = None,
+    ) -> List[Deal]:
         """
         Search for deals across all retailers.
         
         Args:
             categories: List of product categories to search for. If None, search all.
+            search_term: Optional user-provided search term to narrow results.
         
         Returns:
             List of Deal objects found.
@@ -147,15 +152,19 @@ class DealSearcher:
         if categories is None:
             categories = list(ProductCategory)
         
-        logger.info(f"Searching for deals in categories: {[cat.value for cat in categories]}")
+        logger.info("Searching for deals in categories: %s", [cat.value for cat in categories])
+        if search_term:
+            logger.info("Using search term: %s", search_term)
         
-        # This is where you would implement actual web scraping or API calls
-        # For now, we'll return a placeholder
-        self.deals = self._fetch_deals_from_retailers(categories)
+        self.deals = self._fetch_deals_from_retailers(categories, search_term)
         
         return self.deals
     
-    def _fetch_deals_from_retailers(self, categories: List[ProductCategory]) -> List[Deal]:
+    def _fetch_deals_from_retailers(
+        self,
+        categories: List[ProductCategory],
+        search_term: Optional[str] = None,
+    ) -> List[Deal]:
         """
         Fetch deals from various retailers.
         
@@ -172,13 +181,21 @@ class DealSearcher:
 
         deals: List[Deal] = []
         seen = set()
+        normalized_term = search_term.strip() if search_term else ""
 
         for category in categories:
-            search_term = CATEGORY_SEARCH_TERMS.get(category, category.value)
-            logger.info("Searching '%s' for %s", search_term, category.value)
+            category_term = CATEGORY_SEARCH_TERMS.get(category, category.value)
+            if normalized_term:
+                if category_term.lower() in normalized_term.lower():
+                    query = normalized_term
+                else:
+                    query = f"{normalized_term} {category_term}".strip()
+            else:
+                query = category_term
+            logger.info("Searching '%s' for %s", query, category.value)
 
             for retailer, scraper in self.retailer_scrapers.items():
-                retailer_deals = scraper(search_term, category, self.max_results_per_retailer)
+                retailer_deals = scraper(query, category, self.max_results_per_retailer)
                 if retailer_deals:
                     logger.info("Found %s deals from %s", len(retailer_deals), retailer)
 
