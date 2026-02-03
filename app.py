@@ -17,6 +17,9 @@ DEFAULT_CATEGORY_SELECTION = [
     ProductCategory.CONSOLE.name,
     ProductCategory.TELEVISION.name,
 ]
+DEFAULT_RESULTS_LIMIT = 5
+DEFAULT_MAX_WORKERS = 6
+SCRAPE_CACHE = {}
 
 INDEX_TEMPLATE = """
 <!doctype html>
@@ -68,6 +71,10 @@ INDEX_TEMPLATE = """
         <label>
           Search term
           <input type="text" name="query" placeholder="e.g. RTX 4070" value="{{ query }}" />
+        </label>
+        <label>
+          Results per retailer
+          <input type="number" name="results_limit" min="1" max="15" step="1" value="{{ results_limit }}" />
         </label>
         <label>
           Min discount %
@@ -149,10 +156,23 @@ def _parse_float(value: Optional[str]) -> Optional[float]:
         return None
 
 
+def _parse_int(value: Optional[str], default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed < 1:
+        return 1
+    if parsed > 15:
+        return 15
+    return parsed
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     selected_categories = list(DEFAULT_CATEGORY_SELECTION)
     query = ""
+    results_limit = DEFAULT_RESULTS_LIMIT
     min_discount = ""
     max_price = ""
     sort_by = "discount"
@@ -164,13 +184,21 @@ def index():
         searched = True
         selected_categories = request.form.getlist("categories") or list(DEFAULT_CATEGORY_SELECTION)
         query = request.form.get("query", "").strip()
+        results_limit = _parse_int(
+            request.form.get("results_limit", str(DEFAULT_RESULTS_LIMIT)),
+            DEFAULT_RESULTS_LIMIT,
+        )
         min_discount = request.form.get("min_discount", "")
         max_price = request.form.get("max_price", "")
         sort_by = request.form.get("sort_by", "discount")
 
         try:
             categories = [ProductCategory[name] for name in selected_categories]
-            searcher = DealSearcher()
+            searcher = DealSearcher(
+                max_results_per_retailer=results_limit,
+                max_workers=DEFAULT_MAX_WORKERS,
+                cache=SCRAPE_CACHE,
+            )
             deals = searcher.search_deals(categories=categories, search_term=query or None)
 
             min_discount_value = _parse_float(min_discount)
@@ -193,6 +221,7 @@ def index():
         categories=list(ProductCategory),
         selected_categories=selected_categories,
         query=query,
+        results_limit=results_limit,
         min_discount=min_discount,
         max_price=max_price,
         sort_by=sort_by,

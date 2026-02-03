@@ -9,9 +9,10 @@ import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
 import requests
@@ -34,6 +35,8 @@ DEFAULT_HEADERS = {
 }
 REQUEST_TIMEOUT = 10
 MAX_RESULTS_PER_RETAILER = 5
+DEFAULT_MAX_WORKERS = 6
+CACHE_TTL_SECONDS = 300
 
 
 class ProductCategory(Enum):
@@ -124,15 +127,25 @@ class Deal:
 class DealSearcher:
     """Main class for searching deals across retailers."""
     
-    def __init__(self):
+    def __init__(
+        self,
+        max_results_per_retailer: int = MAX_RESULTS_PER_RETAILER,
+        request_delay: float = 0.0,
+        max_workers: int = DEFAULT_MAX_WORKERS,
+        cache: Optional[Dict[Tuple[str, str, str], Tuple[float, List["Deal"]]]] = None,
+        cache_ttl_seconds: int = CACHE_TTL_SECONDS,
+    ):
         self.deals: List[Deal] = []
         self.retailer_scrapers = {
             "Best Buy": self._scrape_bestbuy,
             "Newegg": self._scrape_newegg,
         }
         self.retailers = list(self.retailer_scrapers.keys())
-        self.request_delay = 0.2
-        self.max_results_per_retailer = MAX_RESULTS_PER_RETAILER
+        self.request_delay = request_delay
+        self.max_results_per_retailer = max_results_per_retailer
+        self.max_workers = max_workers
+        self._cache = cache if cache is not None else {}
+        self.cache_ttl_seconds = cache_ttl_seconds
     
     def search_deals(
         self,
@@ -182,6 +195,7 @@ class DealSearcher:
         deals: List[Deal] = []
         seen = set()
         normalized_term = search_term.strip() if search_term else ""
+        tasks = []
 
         for category in categories:
             category_term = CATEGORY_SEARCH_TERMS.get(category, category.value)
@@ -193,25 +207,87 @@ class DealSearcher:
             else:
                 query = category_term
             logger.info("Searching '%s' for %s", query, category.value)
-
             for retailer, scraper in self.retailer_scrapers.items():
-                retailer_deals = scraper(query, category, self.max_results_per_retailer)
-                if retailer_deals:
-                    logger.info("Found %s deals from %s", len(retailer_deals), retailer)
+                tasks.append((retailer, scraper, query, category))
 
-                for deal in retailer_deals:
-                    key = (deal.retailer, deal.product_name.lower())
-                    if key in seen:
+        if tasks and self.max_workers and len(tasks) > 1:
+            max_workers = min(self.max_workers, len(tasks))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_task = {
+                    executor.submit(
+                        self._scrape_with_cache,
+                        retailer,
+                        scraper,
+                        query,
+                        category,
+                    ): (retailer, query, category)
+                    for retailer, scraper, query, category in tasks
+                }
+                for future in as_completed(future_to_task):
+                    retailer, query, category = future_to_task[future]
+                    try:
+                        retailer_deals = future.result()
+                    except Exception as exc:
+                        logger.warning(
+                            "Scrape failed for %s (%s): %s",
+                            retailer,
+                            query,
+                            exc,
+                        )
                         continue
-                    deals.append(deal)
-                    seen.add(key)
-
+                    self._merge_deals(retailer_deals, deals, seen)
+        else:
+            for retailer, scraper, query, category in tasks:
+                retailer_deals = self._scrape_with_cache(retailer, scraper, query, category)
+                self._merge_deals(retailer_deals, deals, seen)
                 if self.request_delay:
                     time.sleep(self.request_delay)
 
         if not deals:
             logger.warning("No deals found from the live scrapers.")
 
+        return deals
+
+    def _merge_deals(self, retailer_deals: List[Deal], deals: List[Deal], seen: set) -> None:
+        if retailer_deals:
+            logger.info("Found %s deals from %s", len(retailer_deals), retailer_deals[0].retailer)
+        for deal in retailer_deals:
+            key = (deal.retailer, deal.product_name.lower())
+            if key in seen:
+                continue
+            deals.append(deal)
+            seen.add(key)
+
+    def _cache_key(self, retailer: str, query: str, category: ProductCategory) -> Tuple[str, str, str]:
+        return (retailer, query.strip().lower(), category.value)
+
+    def _cache_get(self, key: Tuple[str, str, str]) -> Optional[List["Deal"]]:
+        cached = self._cache.get(key)
+        if not cached:
+            return None
+        timestamp, deals = cached
+        if time.time() - timestamp > self.cache_ttl_seconds:
+            self._cache.pop(key, None)
+            return None
+        return deals
+
+    def _cache_set(self, key: Tuple[str, str, str], deals: List["Deal"]) -> None:
+        self._cache[key] = (time.time(), deals)
+
+    def _scrape_with_cache(
+        self,
+        retailer: str,
+        scraper,
+        query: str,
+        category: ProductCategory,
+    ) -> List[Deal]:
+        key = self._cache_key(retailer, query, category)
+        cached = self._cache_get(key)
+        if cached is not None:
+            logger.info("Cache hit for %s (%s)", retailer, query)
+            return cached
+        deals = scraper(query, category, self.max_results_per_retailer)
+        self._cache_set(key, deals)
         return deals
 
     @staticmethod
