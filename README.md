@@ -116,6 +116,23 @@ This will:
 3. Show filtered results (CPU/GPU deals, high-discount deals)
 4. Export results to `deals.json`
 
+### Web App (Flask)
+
+Run the web UI locally:
+
+```bash
+python app.py
+```
+
+Then open your browser to:
+
+```
+http://127.0.0.1:5000
+```
+
+The web UI searches live listings from Best Buy and Newegg and lets you filter
+by category, minimum discount, and max price.
+
 ### Programmatic Usage
 
 You can also use the app as a module in your own Python scripts:
@@ -149,6 +166,7 @@ searcher.export_deals_to_json("my_deals.json")
 
 ```
 Discount-App/
+├── app.py               # Flask web app
 ├── discount_app.py      # Main application file
 ├── examples.py          # Usage examples and configuration templates
 ├── requirements.txt     # Python dependencies
@@ -159,22 +177,16 @@ Discount-App/
 
 ## Next Steps
 
-This is a base implementation that provides the structure for the discount app. To make it fully functional, you'll need to:
+To expand the web app and scrapers further, consider:
 
-1. **Implement Web Scraping**: Add actual web scraping logic in the `_fetch_deals_from_retailers()` method using libraries like:
-   - `beautifulsoup4` for parsing HTML
-   - `requests` for HTTP requests
-   - `selenium` for dynamic content
+1. **Add more retailers**: Implement scrapers for Walmart, Target, B&H Photo, etc.
+2. **Improve scraping reliability**: Handle pagination, stock status, and promo codes.
+3. **Add caching**: Avoid repeated scraping within short windows.
+4. **Add price tracking**: Store historical price data to identify the best deals.
+5. **Add notifications**: Email or push notifications when good deals are found.
+6. **Add a database**: Store deals in a database for analysis.
+7. **Convert to FastAPI**: Swap the Flask UI for FastAPI once the API is stable.
 
-2. **Add API Integration**: Some retailers offer APIs that can be used to fetch deals programmatically
-
-3. **Add Price Tracking**: Store historical price data to identify the best deals
-
-4. **Add Notifications**: Implement email or push notifications when good deals are found
-
-5. **Add Database**: Store deals in a database for historical analysis
-
-6. **Add Web Interface**: Create a web UI using Flask or Django for easier interaction
 
 ## Contributing
 
